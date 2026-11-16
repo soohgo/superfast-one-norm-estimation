@@ -11,7 +11,6 @@ MATLAB implementation and numerical benchmark suite for the paper **"Can we acce
 ## Benchmarks
 1. Place [Anymatrix](https://github.com/mmft/anymatrix) on your MATLAB path (required for `regtools/shaw` and `regtools/gravity`).
 2. Run `run_benchmarks.m` to reproduce the accuracy and timing experiments (set `QUICK = true` for a fast smoke test).
-3. Run `make_tables.m` on the saved `.mat` results to generate the LaTeX tables from the paper.
 
 ## Citation
 ```bibtex
