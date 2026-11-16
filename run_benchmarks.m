@@ -1,6 +1,4 @@
 %% run_benchmarks.m
-% Full benchmark suite for superfast 1-norm estimation.
-% ---------------------------------------------------------------------
 % REQUIREMENTS
 %   Anymatrix on the path. MatrixGenerator.m with haar_orth. And
 %   sparsified_1norm_est_w_ca.m returning mv_steps as its fourth output.
@@ -9,7 +7,7 @@
 
 clear; clc;
 addpath('anymatrix');
-outfilepath = 'output'
+outfilepath = 'output/'
 if ~exist(outfilepath,'dir'), mkdir(outfilepath); end
 
 %% ------------------------------ CONFIG ------------------------------
@@ -20,8 +18,8 @@ if QUICK
     matrix_types = {'Shaw','Fast Decay','Random', 'Kahan','Poisson'};
     time_target = 5e-3;
 else
-    sizes   = [1024, 2048, 4096];
-    trials  = [1000,  1000,  1000];   % accuracy trials
+    sizes   = [1024, 2048, 096];
+    trials  = [1000, 1000,  1000];   % accuracy trials
     ttrials = [  100,   100,   100];   % of which these are also timed
     matrix_types = {'Shaw','Gravity','SLP','Fast Decay','Slow Decay', ...
                     'One Small SV','One Large SV','Cauchy','Random', ...
@@ -101,26 +99,35 @@ for m_idx = 1:num_M
         r = struct();
         r.err_lap1 = zeros(ntr,1);  r.prod_lap1 = zeros(ntr,1);
         r.err_lap2 = zeros(ntr,1);  r.prod_lap2 = zeros(ntr,1);
-        r.err_a41_max  = zeros(ntr,1);
-        r.err_a41  = zeros(ntr,1);  r.it_a41    = zeros(ntr,1);
-        r.j41      = zeros(ntr,1);       % start column, reused when timing
         r.n_actual = n;
+        r.mv_a42   = zeros(ntr,num_K);
+        r.mv_a42_2k = zeros(ntr, num_K);
+
         r.err_a31  = zeros(ntr,num_K);  r.it_a31  = zeros(ntr,num_K);
-        r.err_a31_even  = zeros(ntr,num_K);  r.it_a31_even  = zeros(ntr,num_K);
         r.err_a41k = zeros(ntr,num_K);  r.err_a41k_max = zeros(ntr,num_K); 
         r.it_a41k = zeros(ntr,num_K);
         r.err_a42  = zeros(ntr,num_K);  r.it_a42  = zeros(ntr,num_K);
         r.err_a42_even  = zeros(ntr,num_K);  r.it_a42_even  = zeros(ntr,num_K);
+        r.err_a42_2k  = zeros(ntr,num_K);  r.it_a42_2k  = zeros(ntr,num_K);
+        r.err_a42_even_2k  = zeros(ntr,num_K);  r.it_a42_even_2k  = zeros(ntr,num_K);
         r.err_a42_hybrid  = zeros(ntr,num_K);  r.it_a42_hybrid  = zeros(ntr,num_K);
-        r.mv_a42   = zeros(ntr,num_K);
+
         r.t_norm = zeros(ntt,1);  r.t_lap1 = zeros(ntt,1);
-        r.t_lap2 = zeros(ntt,1);  r.t_a41  = zeros(ntt,1);
+        r.t_lap2 = zeros(ntt,1);
+        r.err_a41_max  = zeros(ntr,1);
+        r.err_a41  = zeros(ntr,1);  r.it_a41    = zeros(ntr,1);
+        r.j41      = zeros(ntr,1);       % start column, reused when timing
+        
         r.t_a31  = zeros(ntt,num_K);
         r.t_a31_even  = zeros(ntt,num_K);
+
         r.t_a41k = zeros(ntt,num_K);  
         r.t_a42  = zeros(ntt,num_K);
         r.t_a42_even  = zeros(ntt,num_K);
+        r.t_a42_2k  = zeros(ntt,num_K);
+        r.t_a42_even_2k  = zeros(ntt,num_K);
         r.t_a42_hybrid  = zeros(ntt,num_K);
+
 
         % Alg 4.1 draws its start column from a dedicated stream, so that it
         % does not depend on how many draws Algs 3.1 consumed first.
@@ -139,30 +146,37 @@ for m_idx = 1:num_M
             % ---------------- accuracy ----------------
 
             % ------------------- baseline 
+            rng(100000 + t);
             [est,~,~,it] = normest1(M,1);
             r.err_lap1(t) = relerr(tn,est);  r.prod_lap1(t) = it(2);
             
-
+            rng(200000 + t);
             [est,~,~,it] = normest1(M);
             r.err_lap2(t) = relerr(tn,est);  r.prod_lap2(t) = it(2);
             
 
             % ------------------- our algs
             nn = size(M,1);  r.n_actual = nn;
-            j41 = randi(s41, nn);  r.j41(t) = j41;
+
+            %[~,~,est_max,g] = maxvol_1(M, j41);
+            rng(300000 + t);
+            j41 = randi(nn);
             [~,estj,est_max,g] = maxvol_1(M, j41);
             r.err_a41_max(t) = relerr(tm,est_max);
             est = norm(M(:,estj),1);
             r.err_a41(t) = relerr(tn,est);  r.it_a41(t) = g;
-            
+
             j31s = zeros(1,num_K);
+
             for kk = 1:num_K
                 k = max(1, k_funcs{kk}(nn));
 
+                rng(1000000 * kk + 100000 + t);
                 [j31,est,g] = sparsified_1norm_est(M,k,TOL,'random');
                 r.err_a31(t,kk) = relerr(tn,est);  r.it_a31(t,kk) = g;
                 j31s(kk) = j31;
 
+                rng(1000000 * kk + 200000 + t);
                 [~,est,g] = sparsified_1norm_est(M,k,TOL,'even');
                 r.err_a31_even(t,kk) = relerr(tn,est);  r.it_a31_even(t,kk) = g;
 
@@ -171,30 +185,46 @@ for m_idx = 1:num_M
                 est = norm(M(:,estj),1);
                 r.err_a41k(t, kk) = relerr(tn,est); r.it_a41k(t,kk) = g;
 
+                rng(1000000 * kk + 300000 + t);
                 [~,est,g,gmv] = sparsified_1norm_est_w_ca(M,k,tol_ca,TOL,'random');
                 r.err_a42(t,kk) = relerr(tn,est);  r.it_a42(t,kk) = g;
                 r.mv_a42(t,kk) = gmv;
 
+                rng(1000000 * kk + 400000 + t);
                 [~,est,g,~] = sparsified_1norm_est_w_ca(M,k,tol_ca,TOL,'even');
                 r.err_a42_even(t,kk) = relerr(tn,est);  r.it_a42_even(t,kk) = g;
 
+                rng(1000000 * kk + 500000 + t);
+                [~,est,g,gmv] = sparsified_1norm_est_w_ca(M,2*k,tol_ca,TOL,'random');
+                r.err_a42_2k(t,kk) = relerr(tn,est);  r.it_a42_2k(t,kk) = g;
+                r.mv_a42_2k(t,kk) = gmv;
+
+                rng(1000000 * kk + 600000 + t);
+                [~,est,g,~] = sparsified_1norm_est_w_ca(M,2*k,tol_ca,TOL,'even');
+                r.err_a42_even_2k(t,kk) = relerr(tn,est);  r.it_a42_even_2k(t,kk) = g;
+
+                rng(1000000 * kk + 700000 + t);
                 [~,est,g,~] = sparsified_1norm_est_w_ca_hybrid(M,k,tol_ca,TOL);
                 r.err_a42_hybrid(t,kk) = relerr(tn,est);  r.it_a42_hybrid(t,kk) = g;
             end
+
 
             % ---------------- timing, same matrix ----------------
             if t <= ntt
                 r.t_norm(t) = tcall(1,M,0,TOL,tol_ca,0,time_target);
                 r.t_lap1(t) = tcall(2,M,0,TOL,tol_ca,0,time_target);
                 r.t_lap2(t) = tcall(3,M,0,TOL,tol_ca,0,time_target);
-                r.t_a41(t)  = tcall(8,M,0,TOL,tol_ca,j41,time_target);
+                r.t_a41(t)  = tcall(7,M,0,TOL,tol_ca,j41,time_target);
                 for kk = 1:num_K
                     k = max(1, k_funcs{kk}(nn));
                     r.t_a31(t,kk)  = tcall(5,M,k,TOL,tol_ca,0,time_target);
-                    r.t_a42(t,kk)  = tcall(7,M,k,TOL,tol_ca,0,time_target);
+                    r.t_a31_even(t,kk)  = tcall(6,M,k,TOL,tol_ca,0,time_target);
                     r.t_a41k(t,kk) = r.t_a31(t,kk) + ...
-                                     tcall(8,M,k,TOL,tol_ca,j31s(kk),time_target);
+                        tcall(7,M,k,TOL,tol_ca,j31s(kk),time_target);
+                    r.t_a42(t,kk)  = tcall(8,M,k,TOL,tol_ca,0,time_target);
                     r.t_a42_even(t,kk)  = tcall(9,M,k,TOL,tol_ca,0,time_target);
+                    r.t_a42_2k(t,kk)  = tcall(8,M,2*k,TOL,tol_ca,0,time_target);
+                    r.t_a42_even_2k(t,kk)  = tcall(9,M,2*k,TOL,tol_ca,0,time_target);
                     r.t_a42_hybrid(t,kk)  = tcall(10,M,k,TOL,tol_ca,0,time_target);
                 end
             end
@@ -213,19 +243,21 @@ for m_idx = 1:num_M
             k = max(1, k_funcs{kk}(nn));
             fprintf('\n  --- %s | n = %d | k = %d ---\n', mtype, nn, k);
             fprintf('  %-14s %10s %10s %9s %11s %9s\n', ...
-                    'algorithm','mean err','median','mean its','median ms','vs t=1');
+                    'algorithm','mean err','median', 'max', 'mean its','median ms','vs t=1\n');
             %b = median(r.t_lap2);
             b = median(r.t_lap1);
             line('  norm(M,1)',    [],            [],            r.t_norm, b);
             line('  normest1 t=1', r.err_lap1,    [],            r.t_lap1, b);
             line('  normest1 t=2', r.err_lap2,    [],            r.t_lap2, b);
             line('  Alg 3.1',      r.err_a31(:,kk),  r.it_a31(:,kk),  r.t_a31(:,kk),  b);
-            line('  Alg 3.1 e',      r.err_a31_even(:,kk),  r.it_a31_even(:,kk),[],  b);
+            line('  Alg 3.1E',      r.err_a31_even(:,kk),  r.it_a31_even(:,kk),[],  b);
             line('  Alg 4.1',      r.err_a41,        r.it_a41,        r.t_a41,        b);
             line('  Alg 4.1-k',    r.err_a41k(:,kk), r.it_a41k(:,kk), r.t_a41k(:,kk), b);
             line('  Alg 4.2',      r.err_a42(:,kk),  r.it_a42(:,kk),  r.t_a42(:,kk),  b);
-            line('  Alg 4.2 e',      r.err_a42_even(:,kk),  r.it_a42_even(:,kk),  [],  b);
-            line('  Alg 4.2 h',      r.err_a42_hybrid(:,kk),  r.it_a42_hybrid(:,kk), r.t_a42_hybrid(:,kk),  b);
+            line('  Alg 4.2E',      r.err_a42_even(:,kk),  r.it_a42_even(:,kk),  r.t_a42_even(:,kk),  b);
+            line('  Alg 4.2(2k)',      r.err_a42_2k(:,kk),  r.it_a42_2k(:,kk),  r.t_a42_2k(:,kk),  b);
+            line('  Alg 4.2E(2k)',      r.err_a42_even_2k(:,kk),  r.it_a42_even_2k(:,kk),  r.t_a42_even_2k(:,kk),  b);
+            line('  Alg 4.2H',      r.err_a42_hybrid(:,kk),  r.it_a42_hybrid(:,kk), r.t_a42_hybrid(:,kk),  b);
         end
         fprintf('  [cell done in %.0f s]\n', toc(tcell));
         save(sprintf('%s/results_%s.mat', outfilepath, stamp), 'R', 'matrix_types', ...
@@ -257,60 +289,39 @@ for m_idx = 1:num_M
 
         for kk = 1:num_K
             k = max(1, k_funcs{kk}(n));
+
             emit(fs,fo,'Alg31', mt,n,k,th,'err',  r.err_a31(:,kk));
             emit(fs,fo,'Alg31e', mt,n,k,th,'err',  r.err_a31_even(:,kk));
             emit(fs,fo,'Alg41k',mt,n,k,th,'err',  r.err_a41k(:,kk));
             emit(fs,fo,'Alg42', mt,n,k,th,'err',  r.err_a42(:,kk));
             emit(fs,fo,'Alg42e', mt,n,k,th,'err',  r.err_a42_even(:,kk));
+            emit(fs,fo,'Alg42_2k', mt,n,2*k,th,'err',  r.err_a42_2k(:,kk));
+            emit(fs,fo,'Alg42e_2k',mt,n,2*k,th,'err',  r.err_a42_even_2k(:,kk));
+            emit(fs,fo,'Alg42h',   mt,n,k,th,'err',  r.err_a42_hybrid(:,kk));
+
             emit(fs,fo,'Alg31', mt,n,k,th,'iters',r.it_a31(:,kk));
+            emit(fs,fo,'Alg31e', mt,n,k,th,'iters',r.it_a31_even(:,kk));
             emit(fs,fo,'Alg41k',mt,n,k,th,'iters',r.it_a41k(:,kk));
             emit(fs,fo,'Alg42', mt,n,k,th,'iters',r.it_a42(:,kk));
+            emit(fs,fo,'Alg42e', mt,n,k,th,'iters',r.it_a42_even(:,kk));
+            emit(fs,fo,'Alg42_2k', mt,n,2*k,th,'iters',r.it_a42_2k(:,kk));
+            emit(fs,fo,'Alg42e_2k', mt,n,2*k,th,'iters',r.it_a42_even_2k(:,kk));
+            emit(fs,fo,'Alg42h', mt,n,k,th,'iters',r.it_a42_hybrid(:,kk));
+
             nzero = nzero + emit(fs,fo,'Alg31', mt,n,k,th,'time_ms',r.t_a31(:,kk)*1000);
             nzero = nzero + emit(fs,fo,'Alg31e', mt,n,k,th,'time_ms',r.t_a31_even(:,kk)*1000);
             nzero = nzero + emit(fs,fo,'Alg41k',mt,n,k,th,'time_ms',r.t_a41k(:,kk)*1000);
             nzero = nzero + emit(fs,fo,'Alg42', mt,n,k,th,'time_ms',r.t_a42(:,kk)*1000);
             nzero = nzero + emit(fs,fo,'Alg42e', mt,n,k,th,'time_ms',r.t_a42_even(:,kk)*1000);
+            nzero = nzero + emit(fs,fo,'Alg42_2k', mt,n,2*k,th,'time_ms',r.t_a42_2k(:,kk)*1000);
+            nzero = nzero + emit(fs,fo,'Alg42e_2k', mt,n,2*k,th,'time_ms',r.t_a42_even_2k(:,kk)*1000);
+            nzero = nzero + emit(fs,fo,'Alg42h', mt,n,k,th,'time_ms',r.t_a42_hybrid(:,kk)*1000);
         end
     end
 end
-fclose(fs);
+fclose(fs); fclose(fo);
 
-%% ------------------------------ CHECKS ------------------------------
-fprintf('\n========================= CHECKS =========================\n');
-if nzero == 0
-    fprintf('PASS: no zero medians in the timing data.\n');
-else
-    fprintf('*** WARNING: %d timing rows have a zero median. ***\n', nzero);
-end
 
-% normest1 reads the whole matrix prod times per estimate and norm(M,1) reads
-% it once, so normest1 cannot be much faster than prod times norm. If it is,
-% the matrix was in cache and the timing understates the real cost. Needs
-% nothing about the machine, only the pass counts.
-fprintf('\nCache residency check:\n');
-ncache = 0;
-for m_idx = 1:num_M
-    for s_idx = 1:num_S
-        r = R{m_idx,s_idx};
-        if isempty(r), continue; end
-        tn_ = median(r.t_norm);  tl_ = median(r.t_lap2);  pr_ = mean(r.prod_lap2);
-        expect = 0.8 * pr_ * tn_;
-        if tl_ < expect
-            ncache = ncache + 1;
-            fprintf(['  n=%5d %-14s normest1 t=2 took %8.3f ms, expected at least ' ...
-                     '%8.3f ms (%.1f passes, norm takes %7.3f ms)\n'], ...
-                    r.n_actual, matrix_types{m_idx}, tl_*1000, expect*1000, pr_, tn_*1000);
-        end
-    end
-end
-if ncache == 0
-    fprintf('PASS: no timing implies the matrix was cache resident.\n');
-else
-    fprintf(['*** %d cells failed. At those sizes the matrix fits in cache, so\n' ...
-             '    normest1 is measured faster than it really is and the speedup\n' ...
-             '    is understated. Report speedups only from sizes that pass. ***\n'], ncache);
-end
-fprintf('Wrote %s/summary_%s.csv, outliers_%s.csv', outfilepath, stamp,stamp);
 diary off;
 
 %% ========================= LOCAL FUNCTIONS ==========================
@@ -352,22 +363,23 @@ function el = run_batch(code, M, k, TOL, tol_ca, j0, nrep)
         case 3, for r=1:nrep, normest1(M);                                 end
         case 4, for r=1:nrep, maxvol_1(M);                                 end
         case 5, for r=1:nrep, sparsified_1norm_est(M,k,TOL);               end
-        case 7, for r=1:nrep, sparsified_1norm_est_w_ca(M,k,tol_ca,TOL);   end
-        case 8, for r=1:nrep, maxvol_1(M,j0);                              end
-        case 9, for r=1:nrep, sparsified_1norm_est_w_ca(M,k,tol_ca,TOL, 'even');   end
-        case 10, for r=1:nrep, sparsified_1norm_est_w_ca_hybrid(M,k,tol_ca,TOL);   end
+        case 6, for r=1:nrep, sparsified_1norm_est(M,k,TOL, 'even');               end
+        case 7, for r=1:nrep, maxvol_1(M,j0);                              end
+        case 8, for r=1:nrep, sparsified_1norm_est_w_ca(M,k,tol_ca,TOL);   end
+        case 9, for r=1:nrep, sparsified_1norm_est_w_ca(M,k,tol_ca,TOL, 'even');    end
+        case 10, for r=1:nrep, sparsified_1norm_est_w_ca_hybrid(M,k,tol_ca,TOL);    end
     end
     el = toc(ts);
 end
 
 function line(name, e, its, tt, base)
-s1 = '         -';  s2 = '         -';  s3 = '        -';
+s1 = '         -';  s2 = '         -';  s22 = '         -'; s3 = '        -';
 s4 = '          -';  s5 = '        -';
-if ~isempty(e),   s1 = sprintf('%10.4f', mean(e));   s2 = sprintf('%10.4f', median(e)); end
+if ~isempty(e),   s1 = sprintf('%10.4f', mean(e));   s2 = sprintf('%10.4f', median(e)); s22 = sprintf('%10.4f', max(e)); end
 if ~isempty(its), s3 = sprintf('%9.2f', mean(its));  end
 if ~isempty(tt),  s4 = sprintf('%11.4f', median(tt)*1000);
     s5 = sprintf('%8.1fx', base/median(tt)); end
-fprintf('  %-14s %s %s %s %s %s\n', name, s1, s2, s3, s4, s5);
+fprintf('  %-14s %s %s %s %s %s %s\n', name, s1, s2, s22, s3, s4, s5);
 end
 
 

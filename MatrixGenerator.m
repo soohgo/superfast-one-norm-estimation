@@ -8,7 +8,7 @@ classdef MatrixGenerator
             % Master router for generating any matrix by string name
             switch m_type
                 case 'Shaw'
-                    M = anymatrix('regtools/shaw', n);      % needs even n
+                    M = anymatrix('regtools/shaw', n);      % needs n even
                 case 'Gravity'
                     M = anymatrix('regtools/gravity', n);
                 case 'SLP'
@@ -105,18 +105,24 @@ classdef MatrixGenerator
             M = log_term .* uv_term;
         end
 
-        function M = get_inv_gaussian_matrix(n)
-            % Higham & Tisseur (2000) stress test for local maxima
-            M = inv(randn(n));
-        end
+        % function M = get_inv_gaussian_matrix(n)
+        %     % Higham & Tisseur (2000) stress test for local maxima
+        %     M = inv(randn(n));
+        % end
 
+        function M = get_inv_gaussian_matrix(n)
+            for attempt = 1:10
+                M = inv(randn(n));
+                if all(isfinite(M(:))), return; end
+            end
+            error('get_inv_gaussian_matrix: could not draw a finite inverse in 10 attempts');
+        end
+        
         function M = get_kahan_matrix(n)
-            % Kahan's matrix (Higham's Test Matrix Toolbox), upper triangular.
             M = gallery('kahan', n);
         end
 
         function M = get_poisson_matrix(n)
-            % 5-point discrete Laplacian: sparse, symmetric, and diagonally dominant
             k = round(sqrt(n));
             M = full(gallery('poisson', k));
         end
