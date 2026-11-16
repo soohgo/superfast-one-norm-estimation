@@ -11,14 +11,3 @@ MATLAB implementation and numerical benchmark suite for the paper **"Can we acce
 ## Benchmarks
 1. Place [Anymatrix](https://github.com/mmft/anymatrix) on your MATLAB path (required for `regtools/shaw` and `regtools/gravity`).
 2. Run `run_benchmarks.m` to reproduce the accuracy and timing experiments (set `QUICK = true` for a fast smoke test).
-
-## Citation
-```bibtex
-@misc{go2025accelerate,
-  title={Can we accelerate {LAPACK}'s 1-norm estimator?},
-  author={Soo Go and Victor Y. Pan},
-  year={2025},
-  eprint={2505.20528},
-  archivePrefix={arXiv},
-  primaryClass={math.NA}
-}
